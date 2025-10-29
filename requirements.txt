@@ -1,0 +1,44 @@
+# Core Framework
+flask
+flask-cors
+
+# LangChain and Related
+langchain
+langchain-community
+langchain-core
+langchain-huggingface
+
+# HuggingFace and Transformers
+transformers
+huggingface-hub
+sentence-transformers
+tokenizers
+safetensors
+
+# PyTorch
+torch
+torchvision
+torchaudio
+
+# Vector Store
+chromadb
+
+# PDF Processing
+PyMuPDF
+
+# Text Processing
+sacremoses
+
+# Quantization (optional, for 4-bit models)
+bitsandbytes
+accelerate
+
+# Utilities
+numpy
+pandas
+requests
+tqdm
+python-dotenv
+
+# Development
+pytest

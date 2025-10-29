@@ -8,6 +8,5 @@ venv/
 embeddings/
 data/
 *.pdf
-*.txt
 .DS_Store
 offload_cache/

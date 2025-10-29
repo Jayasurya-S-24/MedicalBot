@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import traceback
 import logging
+import os
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -18,6 +19,11 @@ def initialize_chain():
     global qa_chain
     try:
         logger.info("Starting RAG chain initialization...")
+        
+        # Set environment variables for Hugging Face
+        os.environ['HF_HUB_DISABLE_PROGRESS_BARS'] = '1'
+        os.environ['TRANSFORMERS_VERBOSITY'] = 'error'
+        
         from utils.rag_pipline import get_rag_chain
         qa_chain = get_rag_chain()
         logger.info("RAG chain initialized successfully!")
@@ -27,17 +33,31 @@ def initialize_chain():
         logger.error(traceback.format_exc())
         return False
 
+@app.route('/', methods=['GET'])
+def home():
+    """Root endpoint"""
+    return jsonify({
+        "message": "Medical Chatbot API",
+        "endpoints": {
+            "/health": "GET - Check service health",
+            "/ask": "POST - Ask a medical question"
+        },
+        "version": "1.0.0"
+    }), 200
+
 @app.route('/health', methods=['GET'])
 def health_check():
     """Health check endpoint"""
     if qa_chain is None:
         return jsonify({
             "status": "initializing",
-            "message": "Model is still loading..."
+            "message": "Model is still loading...",
+            "ready": False
         }), 503
     return jsonify({
         "status": "ready",
-        "message": "Service is ready"
+        "message": "Service is ready",
+        "ready": True
     }), 200
 
 @app.route('/ask', methods=['POST'])
@@ -56,10 +76,18 @@ def ask_question():
         data = request.get_json()
         if not data or 'query' not in data:
             return jsonify({
-                "error": "Missing 'query' in request body"
+                "error": "Missing 'query' in request body",
+                "example": {"query": "What is diabetes?"}
             }), 400
         
         query = data['query']
+        
+        # Validate query
+        if not query.strip():
+            return jsonify({
+                "error": "Query cannot be empty"
+            }), 400
+        
         logger.info(f"Received query: {query[:100]}...")  # Log first 100 chars
         
         # Process the query
@@ -78,11 +106,12 @@ def ask_question():
             "answer": answer,
             "sources": [
                 {
-                    "content": doc.page_content[:200] + "...",  # First 200 chars
+                    "content": doc.page_content[:200] + "..." if len(doc.page_content) > 200 else doc.page_content,
                     "metadata": doc.metadata
                 }
                 for doc in source_docs
-            ]
+            ],
+            "num_sources": len(source_docs)
         }
         
         return jsonify(response), 200
@@ -92,18 +121,54 @@ def ask_question():
         logger.error(traceback.format_exc())
         return jsonify({
             "error": "Internal server error",
-            "message": str(e)
+            "message": str(e),
+            "type": type(e).__name__
         }), 500
 
+@app.errorhandler(404)
+def not_found(error):
+    """Handle 404 errors"""
+    return jsonify({
+        "error": "Endpoint not found",
+        "message": "The requested URL was not found on the server"
+    }), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    """Handle 500 errors"""
+    logger.error(f"Internal server error: {str(error)}")
+    return jsonify({
+        "error": "Internal server error",
+        "message": "An unexpected error occurred"
+    }), 500
+
+# Render-specific: Initialize on import for gunicorn
+if os.environ.get('RENDER'):
+    logger.info("=" * 60)
+    logger.info("Detected Render environment - Initializing on import")
+    logger.info("=" * 60)
+    initialize_chain()
+
 if __name__ == '__main__':
-    logger.info("=" * 50)
+    logger.info("=" * 60)
     logger.info("Starting Medical Chatbot Server")
-    logger.info("=" * 50)
+    logger.info("=" * 60)
     
     # Initialize the chain before starting the server
     if not initialize_chain():
         logger.error("Failed to initialize. Exiting...")
         exit(1)
     
-    logger.info("Starting Flask server on http://127.0.0.1:5000")
-    app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
+    # Get port from environment variable (Render sets this automatically)
+    port = int(os.environ.get('PORT', 5000))
+    
+    logger.info(f"Starting Flask server on http://0.0.0.0:{port}")
+    logger.info("=" * 60)
+    
+    # Use production-ready settings
+    app.run(
+        host='0.0.0.0',
+        port=port,
+        debug=False,
+        threaded=True
+    )
